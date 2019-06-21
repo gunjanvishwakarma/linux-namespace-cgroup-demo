@@ -1,0 +1,142 @@
+----------------download alpine linux----------------
+https://alpinelinux.org/downloads/
+
+mkdir /home/alpine/
+
+cd /home/alpine/
+
+wget http://dl-cdn.alpinelinux.org/alpine/v3.10/releases/x86_64/alpine-minirootfs-3.10.0-x86_64.tar.gz
+
+rm -rf alpine-minirootfs-3.10.0-x86_64.tar.gz
+
+----------------launch container----------------
+
+mount -o bind /home/alpine/proc /home/alpine/proc
+
+unshare -p --mount-proc=/home/alpine/proc -f chroot /home/alpine /bin/sh
+
+----------------dns configuration-------------
+/etc/resolv.conf
+
+nameserver 164.99.201.201
+nameserver 147.2.2.2
+nameserver 137.65.247.1
+
+----------------install bash and python----------------
+apk add bash
+
+apk add python3
+
+------------------------------------------------------
+
+unshare -p --mount-proc=/home/alpine/proc -f chroot /home/alpine /bin/bash
+
+
+eat-memory.py
+
+import time
+import os
+
+data = bytearray()
+
+i=0
+while True:
+        data.extend(os.urandom(10000000))
+        i += 1
+        print("%dmb" % (i*10,))
+        time.sleep(1)
+
+
+infinite.py
+
+import time
+while True:
+    print("hello world")
+    time.sleep(1)
+
+
+cp infinite.py eat-memory.py /home/code/
+
+ps -ef | grep /bin/bash
+
+PID={pid from previous command}
+
+nsenter --pid=/proc/$PID/ns/pid --mount=/proc/$PID/ns/mnt chroot /home/alpine/ /bin/bash
+
+nsenter --pid=/proc/$PID/ns/pid --net=/proc/$PID/ns/net --mount=/proc/$PID/ns/mnt mount --bind -o ro /home/code /home/alpine/mnt
+
+python3 infinite.py
+
+python3 eat-memory.py
+
+----------------cgroup demo----------------
+mkdir /sys/fs/cgroup/memory/demo
+
+cd /sys/fs/cgroup/memory
+
+echo "0" > memory.swappiness
+
+echo "100000000" > memory.limit_in_bytes
+
+ps -ef | grep /bin/bash
+
+echo "{PID}" > tasks
+
+cat tasks
+
+python3 eat-memory.py
+
+rmdir demo
+
+----------------network namespace demo using bridge----------------
+
+ip link delete br0
+
+ip link delete veth0
+
+ip link delete veth1
+
+ip netns delete my_network_namespace 
+
+ip link add name veth0 type veth peer name veth1
+
+ip link add br0 type bridge
+
+ifconfig br0 192.168.42.1 netmask 255.255.255.0 up
+
+ip link set br0 up
+
+ip link set veth0 master br0 up
+
+ip netns add my_network_namespace
+
+
+unshare -p --net=/run/netns/my_network_namespace --mount-proc=/home/alpine/proc -f chroot /home/alpine /bin/bash
+
+ip link set veth1 netns my_network_namespace
+
+ifconfig veth1 192.168.42.2 netmask 255.255.255.0 up
+
+route add default gw 192.168.42.1
+
+ip link set lo up
+
+ping www.google.com
+
+traceroute www.google.com
+
+----------------network namespace demo using nat----------------
+ip netns delete my_network_namespace
+ip netns add my_network_namespace
+ip link add veth0 type veth peer name veth1
+ip link set veth1 netns my_network_namespace
+ifconfig veth0 192.168.42.1 netmask 255.255.255.0 up
+ip netns exec my_network_namespace ifconfig veth1 192.168.42.2 netmask 255.255.255.0 up
+ip netns exec my_network_namespace route add default gw 192.168.42.1
+echo 1 > /proc/sys/net/ipv4/ip_forward
+iptables -t nat -A POSTROUTING -s 192.168.42.0/24 -o eth0 -j MASQUERADE
+ip netns exec my_network_namespace ping 172.217.167.164
+
+unshare -p --net=/run/netns/my_network_namespace --mount-proc=/rootfs/proc -f chroot rootfs /bin/bash
+
+traceroute www.google.com
