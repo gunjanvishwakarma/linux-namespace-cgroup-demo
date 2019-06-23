@@ -140,3 +140,24 @@ ip netns exec my_network_namespace ping 172.217.167.164
 unshare -p --net=/run/netns/my_network_namespace --mount-proc=/rootfs/proc -f chroot rootfs /bin/bash
 
 traceroute www.google.com
+
+----------------freeze cgroup processes----------------
+echo FROZEN > /sys/fs/cgroup/freezer/0/freezer.state
+
+echo THAWED  > /sys/fs/cgroup/freezer/0/freezer.state
+
+----------------Install Docker SLE_12_SP4-------------
+
+zypper addrepo https://download.opensuse.org/repositories/Virtualization:containers/SLE_12_SP4/Virtualization:containers.repo
+
+zypper refresh
+
+zypper install docker
+
+systemctl start docker
+
+docker run --name alpine-linux -it alpine
+
+---------------------------
+
+pstree
