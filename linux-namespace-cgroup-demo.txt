@@ -90,6 +90,8 @@ rmdir demo
 
 ----------------network namespace demo using bridge----------------
 
+SuSEfirewall2 stop
+
 ip link delete br0
 
 ip link delete veth0
