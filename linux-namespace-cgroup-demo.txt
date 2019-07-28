@@ -7,6 +7,8 @@ cd /home/alpine/
 
 wget http://dl-cdn.alpinelinux.org/alpine/v3.10/releases/x86_64/alpine-minirootfs-3.10.0-x86_64.tar.gz
 
+tar -xvf alpine-minirootfs-3.10.0-x86_64.tar.gz
+
 rm -rf alpine-minirootfs-3.10.0-x86_64.tar.gz
 
 ----------------launch container----------------
@@ -90,42 +92,55 @@ rmdir demo
 
 ----------------network namespace demo using bridge----------------
 
-SuSEfirewall2 stop
+----------clean up previous network namespace demo------
+ip netns delete alpine_netns
 
 ip link delete br0
 
 ip link delete veth0
 
-ip link delete veth1
+iptables -t nat -v -L -n --line-number
 
-ip netns delete my_network_namespace 
+iptables -t nat -D POSTROUTING 1
 
-ip link add name veth0 type veth peer name veth1
+--------------------------------------------------------
+
+----------------network namespace demo start----------------
+
+SuSEfirewall2 stop
+
+ip link add name veth0 type veth peer name alpine_eth0
+
+ip netns add alpine_netns
 
 ip link add br0 type bridge
 
-ifconfig br0 192.168.42.1 netmask 255.255.255.0 up
-
-ip link set br0 up
+ifconfig br0 172.17.0.1 netmask 255.255.0.0 up
 
 ip link set veth0 master br0 up
 
-ip netns add my_network_namespace
+echo 1 > /proc/sys/net/ipv4/ip_forward
 
+iptables -t nat -A POSTROUTING -s 172.17.0.0/16 -j MASQUERADE
 
-unshare -p --net=/run/netns/my_network_namespace --mount-proc=/home/alpine/proc -f chroot /home/alpine /bin/bash
+unshare -p --net=/run/netns/alpine_netns --mount-proc=/home/alpine/proc -f chroot /home/alpine /bin/bash
 
-ip link set veth1 netns my_network_namespace
+ip link set alpine_eth0 netns alpine_netns
 
-ifconfig veth1 192.168.42.2 netmask 255.255.255.0 up
+ifconfig alpine_eth0 172.17.0.2 netmask 255.255.0.0 up
 
-route add default gw 192.168.42.1
-
-ip link set lo up
+route add default gw 172.17.0.1
 
 ping www.google.com
 
 traceroute www.google.com
+
+ping 172.217.167.164
+
+ip netns exec alpine_netns ping 172.217.167.164
+
+
+----------------network namespace demo end----------------
 
 ----------------network namespace demo using nat----------------
 ip netns delete my_network_namespace
@@ -142,6 +157,10 @@ ip netns exec my_network_namespace ping 172.217.167.164
 unshare -p --net=/run/netns/my_network_namespace --mount-proc=/rootfs/proc -f chroot rootfs /bin/bash
 
 traceroute www.google.com
+
+iptables -t nat -v -L -n --line-number
+
+iptables -t nat -D POSTROUTING 1
 
 ----------------freeze cgroup processes----------------
 echo FROZEN > /sys/fs/cgroup/freezer/0/freezer.state
